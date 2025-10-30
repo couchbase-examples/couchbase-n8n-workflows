@@ -85,11 +85,13 @@ After making changes to a workflow in n8n:
 ## Understanding Workflow Types
 
 ### Main Workflows
+
 Workflows that can be triggered manually or on a schedule. These are the entry points.
 
 **Examples**: JetBrains Stats (Task 2), Package Stats Aggregator (Task 4)
 
 ### Sub-Workflows
+
 Reusable workflows called by main workflows (like functions in programming). They accept inputs and return outputs.
 
 **Example**: PyPI Stats Sub-workflow (Task 3) - takes a package name and returns download stats
@@ -115,20 +117,24 @@ Some workflows (Task 2) use Puppeteer for browser automation. This requires:
 ## Common Issues & Troubleshooting
 
 ### Workflow fails with "Unauthorized"
+
 - Check that credentials are properly configured in n8n Settings → Credentials
 - Verify API keys haven't expired
 
 ### Puppeteer script times out
+
 - Increase the timeout value in the Code node
 - Check if the target website structure has changed
 - Review base64 screenshot output for debugging
 
 ### Google Sheets not updating
+
 - Verify the Google Sheets credential has edit permissions
 - Check that the spreadsheet ID in the workflow matches the target sheet
 - Ensure the correct tab name is specified
 
 ### Sub-workflow not found
+
 - Make sure the sub-workflow is active in n8n
 - Verify the sub-workflow ID matches in the calling workflow
 - Check that the sub-workflow has been properly saved
@@ -136,21 +142,24 @@ Some workflows (Task 2) use Puppeteer for browser automation. This requires:
 ## Data Storage
 
 ### Google Sheets
+
 All statistics are stored in: https://docs.google.com/spreadsheets/d/1s7DTSNKtBbXTUQRnjSr5nNh2ihnLVFJUEpBSiR90-i8/
 
 **Tabs**:
+
 - `jetbrains` - JetBrains plugin download stats
 - `python-couchbase` - couchbase package stats from PyPI
 - `python-langchain` - langchain-couchbase package stats from PyPI
 
 ### n8n Data Tables
+
 For Task 4, a data table stores the list of packages to track:
 
-| Column Name | Type | Description |
-|-------------|------|-------------|
-| package_name | Text | Python package name (e.g., "couchbase") |
-| tab_name | Text | Google Sheets tab to save results |
-| is_enabled | Boolean | Whether to track this package |
+| Column Name  | Type    | Description                             |
+| ------------ | ------- | --------------------------------------- |
+| package_name | Text    | Python package name (e.g., "couchbase") |
+| tab_name     | Text    | Google Sheets tab to save results       |
+| is_enabled   | Boolean | Whether to track this package           |
 
 ## n8n Best Practices
 
@@ -169,6 +178,7 @@ Workflows run on the 1st of each month at scheduled times:
 - **Package Stats Aggregator**: 1st of month, 10:00 AM UTC
 
 To modify schedules:
+
 1. Open the workflow in n8n
 2. Click the **Schedule Trigger** node
 3. Adjust the cron expression or use the visual editor

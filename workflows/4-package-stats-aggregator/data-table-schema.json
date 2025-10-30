@@ -1,0 +1,96 @@
+{
+  "table_name": "python_packages",
+  "description": "Configuration table for Python packages to track on PyPI",
+  "columns": [
+    {
+      "name": "package_name",
+      "type": "text",
+      "description": "Python package name as it appears on PyPI (e.g., 'couchbase', 'langchain-couchbase')",
+      "required": true,
+      "example": "couchbase"
+    },
+    {
+      "name": "tab_name",
+      "type": "text",
+      "description": "Google Sheets tab name where statistics for this package will be saved",
+      "required": true,
+      "example": "python-couchbase",
+      "notes": "Must match existing tab name in Google Sheets or will be created automatically"
+    },
+    {
+      "name": "is_enabled",
+      "type": "boolean",
+      "description": "Whether to track statistics for this package. Unchecked packages are skipped.",
+      "required": true,
+      "default": true,
+      "example": true
+    }
+  ],
+  "initial_data": [
+    {
+      "package_name": "couchbase",
+      "tab_name": "python-couchbase",
+      "is_enabled": true,
+      "notes": "Main Couchbase Python SDK"
+    },
+    {
+      "package_name": "langchain-couchbase",
+      "tab_name": "python-langchain",
+      "is_enabled": true,
+      "notes": "LangChain integration for Couchbase"
+    }
+  ],
+  "usage": {
+    "read_by": "Python Package Stats Aggregator workflow (Task 4)",
+    "filter": "is_enabled = true",
+    "purpose": "Store list of Python packages to track monthly download statistics from PyPI"
+  },
+  "setup_instructions": {
+    "step_1": "In n8n, navigate to Data → Tables (or similar menu)",
+    "step_2": "Click 'Create Table' or 'Add Table'",
+    "step_3": "Name the table: python_packages",
+    "step_4": "Add columns as defined in the 'columns' array above",
+    "step_5": "Add initial rows from 'initial_data' array",
+    "step_6": "Save the table",
+    "step_7": "Verify the table appears in the n8n Data section"
+  },
+  "adding_new_packages": {
+    "description": "To track additional Python packages in the future:",
+    "steps": [
+      "Open the python_packages data table in n8n",
+      "Click 'Add Row' or '+' button",
+      "Fill in the fields:",
+      "  - package_name: The PyPI package name (must exist on pypi.org)",
+      "  - tab_name: Google Sheets tab to save results (will be created if doesn't exist)",
+      "  - is_enabled: Check to enable tracking, uncheck to skip",
+      "Save the row",
+      "Next scheduled workflow run will include this package"
+    ],
+    "example_packages": [
+      {
+        "package_name": "acouchbase",
+        "tab_name": "python-acouchbase",
+        "is_enabled": true,
+        "notes": "Async Couchbase client (if tracked in future)"
+      }
+    ]
+  },
+  "maintenance": {
+    "disabling_packages": "Uncheck 'is_enabled' to stop tracking without deleting historical data",
+    "updating_tab_names": "Change 'tab_name' to redirect output to different Google Sheets tab",
+    "removing_packages": "Delete row to permanently stop tracking (loses configuration)"
+  },
+  "google_sheets_integration": {
+    "spreadsheet_id": "1s7DTSNKtBbXTUQRnjSr5nNh2ihnLVFJUEpBSiR90-i8",
+    "spreadsheet_url": "https://docs.google.com/spreadsheets/d/1s7DTSNKtBbXTUQRnjSr5nNh2ihnLVFJUEpBSiR90-i8/",
+    "tab_structure": {
+      "columns": [
+        "Date (yyyy-MM format)",
+        "Package Name",
+        "Downloads (with mirrors)",
+        "Unique Downloads (without mirrors)"
+      ]
+    },
+    "note": "Ensure tabs listed in 'tab_name' column exist in the spreadsheet, or workflow will create them automatically (depending on n8n Google Sheets node settings)"
+  }
+}

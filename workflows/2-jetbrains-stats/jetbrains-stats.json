@@ -1,0 +1,137 @@
+{
+  "name": "JetBrains Plugin Stats",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-trigger",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 1 * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 500],
+      "notes": "Runs on 1st of month at 9:00 AM UTC"
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Code (Puppeteer) node\n// $page is provided by n8n. Do NOT require('puppeteer').\n// Flow:\n// 1) Login at account.jetbrains.com until URL contains /licenses\n// 2) Open analytics edit URL\n// 3) Kill CookieHub (ch2) dialog: try Accept All; if it fails, dismiss/close/remove\n// 4) Start/complete Hub auth (plugins.jetbrains.com / hub.jetbrains.com)\n// 5) Wait for /edit/analytics\n// 6) Extract Total downloads + Downloads this month\n// 7) Screenshot and return\n\n// TODO: Replace with actual credentials\n// Use: $credentials.get('jetbrainsAccount') when credential is set up\nconst EMAIL = 'your-email@example.com';\nconst PASSWORD = 'your-password';\n\nconst logs = [];\nconst log = (msg) => logs.push(`[${new Date().toISOString()}] ${msg}`);\nconst sleep = (ms) => new Promise(r => setTimeout(r, ms));\n\nasync function waitVisible(selectors, timeoutMs = 30000) {\n  log(`Waiting visible: ${selectors.join(' | ')}`);\n  const deadline = Date.now() + timeoutMs;\n  while (Date.now() < deadline) {\n    for (const sel of selectors) {\n      const ok = await $page.evaluate((s) => {\n        const el = document.querySelector(s);\n        if (!el) return false;\n        const st = getComputedStyle(el);\n        const r = el.getBoundingClientRect();\n        return st.display !== 'none' && st.visibility !== 'hidden' && r.width > 0 && r.height > 0;\n      }, sel).catch(() => false);\n      if (ok) { log(`Visible: ${sel}`); return sel; }\n    }\n    await sleep(100);\n  }\n  throw new Error(`Timeout visible: ${selectors.join(' | ')}`);\n}\n\nasync function typeInto(selector, value) {\n  log(`Typing into: ${selector}`);\n  const el = await $page.$(selector);\n  if (!el) throw new Error(`Input not found: ${selector}`);\n  await el.click({ clickCount: 3 });\n  await el.type(value, { delay: 18 });\n  log(`Typed: ${selector}`);\n}\n\nasync function submitFormForInput(inputSelector) {\n  await $page.$eval(inputSelector, (input) => {\n    const form = input.closest('form');\n    if (!form) throw new Error('Form not found for input ' + inputSelector);\n    const btn = form.querySelector('button[type=\"submit\"], button[data-test=\"button\"], [type=\"submit\"]');\n    if (btn && !btn.disabled && btn.getAttribute('aria-disabled') !== 'true') {\n      btn.scrollIntoView({ block: 'center', inline: 'center' });\n      btn.click();\n    } else {\n      form.requestSubmit ? form.requestSubmit() : form.submit();\n    }\n  });\n}\n\nfunction urlEndsWith(pathSuffix) {\n  try {\n    const u = new URL($page.url());\n    return u.pathname.endsWith(pathSuffix);\n  } catch {\n    return $page.url().endsWith(pathSuffix);\n  }\n}\n\n// ---------- CookieHub (ch2) killer ----------\nasync function acceptCookies_ch2(timeoutMs = 20000) {\n  const present = await $page.evaluate(() => !!document.querySelector('#ch2-dialog.ch2-visible'));\n  if (!present) return true;\n\n  const deadline = Date.now() + timeoutMs;\n\n  while (Date.now() < deadline) {\n    const accepted = await $page.evaluate(() => {\n      const dlg = document.querySelector('#ch2-dialog.ch2-visible');\n      if (!dlg) return 'gone';\n      const btn = dlg.querySelector('.ch2-dialog-actions .ch2-allow-all-btn');\n      if (!btn) return 'no-btn';\n\n      try { btn.scrollIntoView({ block: 'center', inline: 'center' }); } catch {}\n\n      try {\n        btn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerType: 'mouse', buttons: 1 }));\n        btn.dispatchEvent(new PointerEvent('pointerup',   { bubbles: true, cancelable: true, pointerType: 'mouse', buttons: 0 }));\n      } catch {}\n\n      btn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, buttons: 1 }));\n      btn.dispatchEvent(new MouseEvent('mouseup',   { bubbles: true, cancelable: true, buttons: 0 }));\n      btn.click();\n\n      return 'clicked';\n    }).catch(() => 'err');\n\n    await sleep(250);\n\n    const gone = await $page.evaluate(() => {\n      const dlg = document.querySelector('#ch2-dialog');\n      if (!dlg) return true;\n      const visible = dlg.classList.contains('ch2-visible');\n      const r = dlg.getBoundingClientRect();\n      const hidden = r.width === 0 || r.height === 0 || getComputedStyle(dlg).display === 'none' || getComputedStyle(dlg).visibility === 'hidden';\n      return !visible || hidden;\n    }).catch(() => false);\n\n    if (gone) { log('CookieHub dialog closed via Accept All'); return true; }\n\n    // Fallback: hard-hide the dialog\n    await $page.evaluate(() => {\n      const dlg = document.querySelector('#ch2-dialog');\n      const root = document.querySelector('div.ch2');\n      if (dlg) dlg.classList.remove('ch2-visible');\n      if (root) root.setAttribute('style', 'display:none;');\n      try { document.body.style.overflow = 'auto'; } catch {}\n    }).catch(() => {});\n\n    const gone5 = await $page.evaluate(() => !document.querySelector('#ch2-dialog.ch2-visible')).catch(() => false);\n    if (gone5) { log('CookieHub dialog force-hidden'); return true; }\n\n    await sleep(250);\n  }\n\n  log('CookieHub dialog still present after all attempts');\n  return false;\n}\n\nasync function startHubAuthFromCurrentPage() {\n  let jumped = await $page.evaluate(() => {\n    const a = document.querySelector('a[title=\"JetBrains Account\"]');\n    if (!a) return false;\n    const href = a.getAttribute('href');\n    if (!href) return false;\n    window.location.assign(href);\n    return true;\n  }).catch(() => false);\n\n  if (jumped) { log('Navigated to Hub auth via anchor href'); return; }\n\n  const iframeSel = 'iframe[title=\"Login dialog\"]';\n  const hasIframe = await $page.$(iframeSel);\n  if (hasIframe) {\n    const src = await $page.$eval(iframeSel, el => el.src).catch(() => null);\n    if (src) {\n      log('Hub auth via modal iframe src');\n      await $page.goto(src, { waitUntil: 'domcontentloaded' });\n      return;\n    }\n  }\n}\n\nasync function completeHubLoginIfPrompted() {\n  await $page.evaluate(() => {\n    const norm = s => (s || '').replace(/\\s+/g, ' ').trim().toLowerCase();\n    const btn = [...document.querySelectorAll('button,a')].find(b => {\n      const t = norm(b.textContent);\n      return t.includes('continue') && t.includes('email');\n    });\n    if (btn) { btn.scrollIntoView({ block: 'center' }); btn.click(); }\n  }).catch(() => {});\n\n  try {\n    const emailSel = await waitVisible(['input[name=\"email\"]','input[type=\"email\"]'], 12000);\n    await typeInto(emailSel, EMAIL);\n    await submitFormForInput(emailSel);\n  } catch {}\n\n  try {\n    const passSel = await waitVisible(['input[name=\"password\"]','input[type=\"password\"]'], 15000);\n    await typeInto(passSel, PASSWORD);\n    await submitFormForInput(passSel);\n  } catch {}\n}\n\n// ============================= RUN =============================\n\nlog('Go to JetBrains login…');\nawait $page.goto('https://account.jetbrains.com/login', { waitUntil: 'domcontentloaded' });\n\n// Email step\nlet emailSel;\ntry {\n  emailSel = await waitVisible(['input[name=\"email\"]','input[type=\"email\"]'], 5000);\n} catch {\n  await $page.evaluate(() => {\n    const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim().toLowerCase();\n    const btn = [...document.querySelectorAll('button')].find(b => {\n      const t = norm(b.textContent);\n      return t.includes('continue') && t.includes('email');\n    });\n    if (btn) { btn.scrollIntoView({ block: 'center' }); btn.click(); }\n  }).catch(() => {});\n  emailSel = await waitVisible(['input[name=\"email\"]','input[type=\"email\"]']);\n}\nawait typeInto(emailSel, EMAIL);\nawait submitFormForInput(emailSel);\n\n// Password\nconst passSel = await waitVisible(['input[name=\"password\"]','input[type=\"password\"]']);\nawait typeInto(passSel, PASSWORD);\nawait submitFormForInput(passSel);\n\n// Wait /licenses\nlog('Wait /licenses…');\n{\n  const deadline = Date.now() + 60000;\n  let last = '';\n  while (Date.now() < deadline) {\n    const u = $page.url();\n    if (u !== last) { log(`URL: ${u}`); last = u; }\n    if (u.includes('/licenses')) { log('Reached /licenses'); break; }\n    await sleep(250);\n  }\n}\n\n// Go to analytics editor\nconst analyticsUrl = 'https://plugins.jetbrains.com/plugin/22131-couchbase/edit/analytics';\nlog(`Go to analytics: ${analyticsUrl}`);\nawait $page.goto(analyticsUrl, { waitUntil: 'domcontentloaded' });\n\n// Kill CookieHub dialog\nconst cookieResult = await acceptCookies_ch2(20000);\nlog(`CookieHub handled=${cookieResult}`);\n\n// Hub auth\nlog('Start Hub auth');\nawait startHubAuthFromCurrentPage();\n\nif (/hub\\.jetbrains\\.com\\/auth\\/login/i.test($page.url())) {\n  await startHubAuthFromCurrentPage();\n}\n\nawait completeHubLoginIfPrompted();\n\n// Wait /edit/analytics\nlog('Wait /edit/analytics…');\n{\n  const deadline = Date.now() + 120000;\n  let last = '';\n  while (Date.now() < deadline) {\n    const u = $page.url();\n    if (u !== last) { log(`URL: ${u}`); last = u; }\n    if (urlEndsWith('/edit/analytics')) break;\n    await sleep(300);\n  }\n}\nif (!urlEndsWith('/edit/analytics')) {\n  await $page.goto(analyticsUrl, { waitUntil: 'domcontentloaded' });\n  await sleep(600);\n}\n\n// Ensure analytics header loaded\nlog('Ensure analytics header loaded…');\nawait $page.waitForFunction(() => {\n  const txt = (document.body.innerText || '').replace(/\\s+/g,' ');\n  return /Total\\s+downloads/i.test(txt) ||\n         /Downloads\\s+this\\s+month/i.test(txt) ||\n         /Downloads\\s+in\\s+[A-Za-z]+/i.test(txt);\n}, { timeout: 60000 }).catch(()=>{});\nawait sleep(250);\n\n// Extract metrics\nlog('Extract metrics…');\nconst { totalDownloads, downloadsThisMonth, url, path } = await $page.evaluate(() => {\n  const normNum = (txt) => {\n    const digits = (txt || '').replace(/[^\\d]/g, '');\n    return digits ? parseInt(digits, 10) : null;\n  };\n\n  const h3FromLabelNode = (node) => {\n    if (!node) return null;\n    let p = node.parentElement;\n    for (let i = 0; i < 4 && p; i++, p = p.parentElement) {\n      const h3 = p.querySelector('h3');\n      if (h3 && h3.textContent) return normNum(h3.textContent);\n    }\n    return null;\n  };\n\n  const xpath = (xp) =>\n    document.evaluate(xp, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);\n\n  // Total downloads\n  let total = null;\n  {\n    const snap = xpath(\"//*[text()[normalize-space()='Total downloads']]\");\n    for (let i = 0; i < snap.snapshotLength && total == null; i++) {\n      const el = snap.snapshotItem(i);\n      total = h3FromLabelNode(el);\n    }\n  }\n  if (total == null) {\n    const divs = Array.from(document.querySelectorAll('div'));\n    for (const d of divs) {\n      const t = (d.textContent || '').replace(/\\s+/g,' ').trim();\n      if (/^Total\\s+downloads\\b/i.test(t)) {\n        const h3 = d.querySelector('h3');\n        if (h3) { total = normNum(h3.textContent); break; }\n      }\n    }\n  }\n\n  // Downloads this month\n  let month = null;\n  {\n    const snap1 = xpath(\"//*[text()[normalize-space()='Downloads this month']]\");\n    for (let i = 0; i < snap1.snapshotLength && month == null; i++) {\n      const el = snap1.snapshotItem(i);\n      month = h3FromLabelNode(el);\n    }\n    if (month == null) {\n      const snap2 = xpath(\"//*[text()[starts-with(normalize-space(),'Downloads in ')]]\");\n      for (let i = 0; i < snap2.snapshotLength && month == null; i++) {\n        const el = snap2.snapshotItem(i);\n        month = h3FromLabelNode(el);\n      }\n    }\n  }\n  if (month == null) {\n    const divs = Array.from(document.querySelectorAll('div'));\n    for (const d of divs) {\n      const t = (d.textContent || '').replace(/\\s+/g,' ').trim();\n      if (/^Downloads\\s+this\\s+month\\b/i.test(t) || /^Downloads\\s+in\\s+[A-Za-z]+/i.test(t)) {\n        const h3 = d.querySelector('h3');\n        if (h3) { month = normNum(h3.textContent); break; }\n      }\n    }\n  }\n\n  const u = location.href;\n  let pth;\n  try { pth = new URL(u).pathname; } catch { pth = u; }\n\n  return { totalDownloads: total, downloadsThisMonth: month, url: u, path: pth };\n});\n\n// Screenshot for debugging\nconst screenshotBuffer = await $page.screenshot({ fullPage: true }).catch(() => null);\nconst screenshot_base64 = screenshotBuffer ? screenshotBuffer.toString('base64') : null;\n\nlogs.push(`[${new Date().toISOString()}] Parsed total=${totalDownloads} month=${downloadsThisMonth}`);\n\n// Calculate date (previous month since we run on 1st)\nconst now = new Date();\nconst lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);\nconst yearMonth = lastMonth.toISOString().slice(0, 7); // \"2025-01\"\n\nreturn [{\n  url,\n  path,\n  totalDownloads,\n  downloadsThisMonth,\n  yearMonth,\n  dateCollected: new Date().toISOString().split('T')[0],\n  screenshot_base64,\n  logs,\n  ...$json\n}];"
+      },
+      "id": "puppeteer-scraper",
+      "name": "Puppeteer - Scrape JetBrains Stats",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 400],
+      "notes": "TODO: Replace EMAIL and PASSWORD with actual credentials\nConsider using: $credentials.get('jetbrainsAccount')"
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1s7DTSNKtBbXTUQRnjSr5nNh2ihnLVFJUEpBSiR90-i8",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "jetbrains",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Year-Month": "={{ $json.yearMonth }}",
+            "Total Downloads": "={{ $json.totalDownloads }}",
+            "Downloads This Month": "={{ $json.downloadsThisMonth }}",
+            "Date Collected": "={{ $json.dateCollected }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "google-sheets-append",
+      "name": "Google Sheets - Append Stats",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [650, 400],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "Google Sheets OAuth2"
+        }
+      },
+      "notes": "TODO: Set up Google Sheets OAuth2 credential"
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Puppeteer - Scrape JetBrains Stats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Puppeteer - Scrape JetBrains Stats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Puppeteer - Scrape JetBrains Stats": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets - Append Stats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "createdAt": "2025-01-30T00:00:00.000Z",
+      "updatedAt": "2025-01-30T00:00:00.000Z",
+      "id": "1",
+      "name": "statistics"
+    },
+    {
+      "createdAt": "2025-01-30T00:00:00.000Z",
+      "updatedAt": "2025-01-30T00:00:00.000Z",
+      "id": "2",
+      "name": "jetbrains"
+    }
+  ],
+  "triggerCount": 0,
+  "updatedAt": "2025-01-30T00:00:00.000Z",
+  "versionId": "1"
+}

@@ -1,0 +1,83 @@
+{
+  "name": "PyPI Stats Sub-Workflow",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "execute-workflow-trigger",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "notes": "This node makes this workflow callable as a sub-workflow.\nExpects input: { package_name, date }"
+    },
+    {
+      "parameters": {
+        "jsCode": "// PyPI Stats Fetcher\n// Fetches download statistics from pypistats.org\n// Input: package_name (e.g., \"couchbase\"), date (e.g., \"2025-01\")\n// Output: downloads, unique_downloads\n\nconst packageName = $input.first().json.package_name;\nconst date = $input.first().json.date; // yyyy-MM format\n\n// Validate inputs\nif (!packageName) {\n  throw new Error('package_name is required');\n}\n\nconst log = [];\nlog.push(`Fetching stats for package: ${packageName}, date: ${date}`);\n\ntry {\n  // Fetch the pypistats.org page\n  const url = `https://pypistats.org/packages/${packageName}`;\n  log.push(`Fetching URL: ${url}`);\n  \n  const response = await fetch(url);\n  \n  if (!response.ok) {\n    throw new Error(`Failed to fetch pypistats: ${response.status} ${response.statusText}`);\n  }\n  \n  const html = await response.text();\n  log.push(`Received HTML (${html.length} bytes)`);\n  \n  // NOTE: This is a simplified example. You'll need to adjust the parsing logic\n  // based on the actual HTML structure of pypistats.org.\n  // The site may use JavaScript to render stats, requiring Puppeteer instead.\n  \n  // Try to extract numbers from the HTML\n  // Look for patterns like:\n  // - \"Downloads\" followed by a number\n  // - \"with mirrors\" / \"without mirrors\"\n  \n  // Example regex patterns (adjust based on actual HTML):\n  const downloadsPattern = /Downloads.*?(\\d{1,3}(?:,\\d{3})*).*?with.*?mirrors/is;\n  const uniquePattern = /Downloads.*?(\\d{1,3}(?:,\\d{3})*).*?without.*?mirrors/is;\n  \n  let downloads = null;\n  let unique_downloads = null;\n  \n  // Try to extract from HTML tables or divs\n  // This is a placeholder - you'll need to inspect pypistats.org and adjust\n  const textContent = html.replace(/<[^>]*>/g, ' ').replace(/\\s+/g, ' ');\n  \n  // Look for monthly data table\n  // pypistats.org typically shows a table with monthly breakdowns\n  // Extract data for the specified month if provided\n  \n  // Simplified extraction (UPDATE THIS based on actual site structure)\n  const monthMatch = textContent.match(new RegExp(\n    `${date}.*?(\\\\d{1,3}(?:,\\\\d{3})*).*?(\\\\d{1,3}(?:,\\\\d{3})*)`,\n    'i'\n  ));\n  \n  if (monthMatch) {\n    downloads = parseInt(monthMatch[1].replace(/,/g, ''), 10);\n    unique_downloads = parseInt(monthMatch[2].replace(/,/g, ''), 10);\n    log.push(`Extracted from month match: downloads=${downloads}, unique=${unique_downloads}`);\n  } else {\n    // Fallback: try to get overall stats\n    const overallMatch = textContent.match(/(\\d{1,3}(?:,\\d{3})*).*?downloads/i);\n    if (overallMatch) {\n      downloads = parseInt(overallMatch[1].replace(/,/g, ''), 10);\n      unique_downloads = Math.round(downloads * 0.85); // Estimate\n      log.push(`Extracted overall: downloads=${downloads}, unique=${unique_downloads} (estimated)`);\n    }\n  }\n  \n  // If parsing failed, log the HTML snippet for debugging\n  if (downloads === null) {\n    log.push(`Failed to parse stats. HTML snippet: ${textContent.slice(0, 500)}...`);\n    // You may want to use Puppeteer for JavaScript-rendered pages\n    log.push('HINT: pypistats.org may require JavaScript. Consider using Puppeteer.');\n  }\n  \n  return {\n    json: {\n      package_name: packageName,\n      date: date,\n      downloads: downloads,\n      unique_downloads: unique_downloads,\n      url: url,\n      logs: log,\n      success: downloads !== null\n    }\n  };\n  \n} catch (error) {\n  log.push(`ERROR: ${error.message}`);\n  return {\n    json: {\n      package_name: packageName,\n      date: date,\n      downloads: null,\n      unique_downloads: null,\n      error: error.message,\n      logs: log,\n      success: false\n    }\n  };\n}\n\n// ALTERNATIVE IMPLEMENTATION using pypistats API (if available):\n// Check if pypistats provides a JSON API endpoint\n// Example: https://pypistats.org/api/packages/{package}/recent\n// If API exists, replace the HTML scraping above with API calls"
+      },
+      "id": "fetch-pypistats",
+      "name": "Fetch PyPI Stats",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 300],
+      "notes": "TODO: Update parsing logic based on actual pypistats.org HTML structure.\nMay need to use Puppeteer if stats are JavaScript-rendered.\nCheck for pypistats JSON API as alternative."
+    },
+    {
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {}
+      },
+      "id": "respond-to-workflow",
+      "name": "Respond to Workflow",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [650, 300],
+      "notes": "Returns results to the calling workflow"
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Fetch PyPI Stats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch PyPI Stats": {
+      "main": [
+        [
+          {
+            "node": "Respond to Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "createdAt": "2025-01-30T00:00:00.000Z",
+      "updatedAt": "2025-01-30T00:00:00.000Z",
+      "id": "3",
+      "name": "sub-workflow"
+    },
+    {
+      "createdAt": "2025-01-30T00:00:00.000Z",
+      "updatedAt": "2025-01-30T00:00:00.000Z",
+      "id": "4",
+      "name": "pypistats"
+    }
+  ],
+  "triggerCount": 0,
+  "updatedAt": "2025-01-30T00:00:00.000Z",
+  "versionId": "1"
+}

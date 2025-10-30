@@ -1,5 +1,5 @@
 # Repository-specific files
-.mcp.json
+.mcp.json*
 *.txt
 .claude/
 

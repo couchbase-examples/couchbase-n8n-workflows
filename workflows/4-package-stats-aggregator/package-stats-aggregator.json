@@ -1,0 +1,305 @@
+{
+  "name": "Python Package Stats Aggregator",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-trigger",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 10 1 * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 500],
+      "notes": "Runs on 1st of month at 10:00 AM UTC"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Calculate previous month date (since we run on 1st of current month)\nconst now = new Date();\nconst lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);\nconst dateStr = lastMonth.toISOString().slice(0, 7); // Format: \"2025-01\"\n\nreturn {\n  json: {\n    date: dateStr,\n    calculatedAt: new Date().toISOString()\n  }\n};"
+      },
+      "id": "calculate-date",
+      "name": "Calculate Previous Month Date",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 400],
+      "notes": "Calculates previous month in yyyy-MM format"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "python_packages",
+        "returnAll": true,
+        "options": {
+          "filter": "is_enabled = true"
+        }
+      },
+      "id": "read-data-table",
+      "name": "Read from Data Table",
+      "type": "n8n-nodes-base.n8nDataTable",
+      "typeVersion": 1,
+      "position": [650, 400],
+      "notes": "TODO: Create 'python_packages' data table in n8n with columns:\n- package_name (text)\n- tab_name (text)\n- is_enabled (boolean)\n\nInitial rows:\n1. couchbase, python-couchbase, true\n2. langchain-couchbase, python-langchain, true"
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "split-in-batches",
+      "name": "Split In Batches",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [850, 400],
+      "notes": "Process one package at a time"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge date from earlier node with current package data\nconst packageData = $input.first().json;\n\n// Get the date from the workflow context\n// In n8n, you can reference earlier nodes\nconst date = $('Calculate Previous Month Date').first().json.date;\n\nreturn {\n  json: {\n    ...packageData,\n    date: date\n  }\n};"
+      },
+      "id": "merge-date",
+      "name": "Merge Date with Package Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1050, 400],
+      "notes": "Combines package info with calculated date"
+    },
+    {
+      "parameters": {
+        "workflowId": "REPLACE_WITH_PYPISTATS_SUBWORKFLOW_ID",
+        "options": {
+          "parameters": {
+            "package_name": "={{ $json.package_name }}",
+            "date": "={{ $json.date }}"
+          }
+        }
+      },
+      "id": "call-pypistats-subworkflow",
+      "name": "Call PyPI Stats Sub-Workflow",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [1250, 400],
+      "notes": "TODO: After creating Task 3 sub-workflow, replace workflowId with actual ID.\nIn n8n UI, you can select by name instead of ID."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge sub-workflow results with package metadata\nconst subworkflowResult = $input.first().json;\nconst packageData = $('Merge Date with Package Data').first().json;\n\nreturn {\n  json: {\n    ...packageData,\n    downloads: subworkflowResult.downloads,\n    unique_downloads: subworkflowResult.unique_downloads,\n    success: subworkflowResult.success || false,\n    logs: subworkflowResult.logs || [],\n    dateCollected: new Date().toISOString().split('T')[0]\n  }\n};"
+      },
+      "id": "merge-results",
+      "name": "Merge Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1450, 400],
+      "notes": "Combines sub-workflow results with package metadata"
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1s7DTSNKtBbXTUQRnjSr5nNh2ihnLVFJUEpBSiR90-i8",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $json.tab_name }}",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Date": "={{ $json.date }}",
+            "Package Name": "={{ $json.package_name }}",
+            "Downloads": "={{ $json.downloads }}",
+            "Unique Downloads": "={{ $json.unique_downloads }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "google-sheets-append",
+      "name": "Google Sheets - Append Stats",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [1650, 400],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "Google Sheets OAuth2"
+        }
+      },
+      "notes": "TODO: Set up Google Sheets OAuth2 credential.\nSheet name is dynamic based on tab_name from data table."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $('Split In Batches').context.noItemsLeft }}",
+              "value2": false
+            }
+          ]
+        }
+      },
+      "id": "check-more-items",
+      "name": "More Items to Process?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1850, 400],
+      "notes": "Loop back if more packages to process"
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Calculate Previous Month Date",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Calculate Previous Month Date",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Previous Month Date": {
+      "main": [
+        [
+          {
+            "node": "Read from Data Table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read from Data Table": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split In Batches": {
+      "main": [
+        [
+          {
+            "node": "Merge Date with Package Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Date with Package Data": {
+      "main": [
+        [
+          {
+            "node": "Call PyPI Stats Sub-Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call PyPI Stats Sub-Workflow": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Results": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets - Append Stats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets - Append Stats": {
+      "main": [
+        [
+          {
+            "node": "More Items to Process?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "More Items to Process?": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "createdAt": "2025-01-30T00:00:00.000Z",
+      "updatedAt": "2025-01-30T00:00:00.000Z",
+      "id": "5",
+      "name": "statistics"
+    },
+    {
+      "createdAt": "2025-01-30T00:00:00.000Z",
+      "updatedAt": "2025-01-30T00:00:00.000Z",
+      "id": "6",
+      "name": "pypistats"
+    },
+    {
+      "createdAt": "2025-01-30T00:00:00.000Z",
+      "updatedAt": "2025-01-30T00:00:00.000Z",
+      "id": "7",
+      "name": "orchestrator"
+    }
+  ],
+  "triggerCount": 0,
+  "updatedAt": "2025-01-30T00:00:00.000Z",
+  "versionId": "1"
+}
