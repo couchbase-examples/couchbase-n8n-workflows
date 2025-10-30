@@ -9,16 +9,17 @@ This repository contains n8n workflows for automating monthly statistics collect
 
 ## The 4 Tasks
 
-| Task | Type | What It Does | JSON File |
-|------|------|--------------|-----------|
-| **Task 1** | Setup | Deploy n8n cluster, add users, configure Puppeteer | ❌ No workflow (it's infrastructure setup) |
-| **Task 2** | Workflow | Scrape JetBrains plugin download stats with Puppeteer | ✅ `jetbrains-stats.json` |
-| **Task 3** | Sub-Workflow | Fetch PyPI package download stats (reusable) | ✅ `pypistats-subworkflow.json` |
-| **Task 4** | Workflow | Orchestrate Task 3 for multiple Python packages | ✅ `package-stats-aggregator.json` |
+| Task       | Type         | What It Does                                          | JSON File                                  |
+| ---------- | ------------ | ----------------------------------------------------- | ------------------------------------------ |
+| **Task 1** | Setup        | Deploy n8n cluster, add users, configure Puppeteer    | ❌ No workflow (it's infrastructure setup) |
+| **Task 2** | Workflow     | Scrape JetBrains plugin download stats with Puppeteer | ✅ `jetbrains-stats.json`                  |
+| **Task 3** | Sub-Workflow | Fetch PyPI package download stats (reusable)          | ✅ `pypistats-subworkflow.json`            |
+| **Task 4** | Workflow     | Orchestrate Task 3 for multiple Python packages       | ✅ `package-stats-aggregator.json`         |
 
 ## Why Task 1 Has No JSON
 
 **Task 1 is not a workflow** - it's the infrastructure setup:
+
 - Deploying the n8n Cloud instance itself
 - Installing Puppeteer support
 - Creating user accounts for the DevEx team (Niranjan, Vishal, Priya)
@@ -108,18 +109,18 @@ couchbase-n8n-workflows/
 
 ## Credentials Needed
 
-| Credential | Used By | Type | Setup |
-|------------|---------|------|-------|
-| **Google Sheets OAuth2** | Tasks 2, 4 | OAuth2 | n8n Settings → Credentials |
-| **JetBrains Account** | Task 2 | Email/Password | Hardcoded in Code node (or use Custom Auth) |
-| **n8n API Key** | Claude Code | API Key | Profile → Settings → API |
+| Credential               | Used By     | Type           | Setup                                       |
+| ------------------------ | ----------- | -------------- | ------------------------------------------- |
+| **Google Sheets OAuth2** | Tasks 2, 4  | OAuth2         | n8n Settings → Credentials                  |
+| **JetBrains Account**    | Task 2      | Email/Password | Hardcoded in Code node (or use Custom Auth) |
+| **n8n API Key**          | Claude Code | API Key        | Profile → Settings → API                    |
 
 ## Workflow Schedules
 
-| Workflow | Schedule | Cron Expression | Timezone |
-|----------|----------|-----------------|----------|
-| Task 2 - JetBrains Stats | 1st of month, 9:00 AM | `0 9 1 * *` | UTC |
-| Task 4 - Package Stats | 1st of month, 10:00 AM | `0 10 1 * *` | UTC |
+| Workflow                 | Schedule               | Cron Expression | Timezone |
+| ------------------------ | ---------------------- | --------------- | -------- |
+| Task 2 - JetBrains Stats | 1st of month, 9:00 AM  | `0 9 1 * *`     | UTC      |
+| Task 4 - Package Stats   | 1st of month, 10:00 AM | `0 10 1 * *`    | UTC      |
 
 **Why these times?** Running on the 1st allows collecting complete statistics for the previous month.
 
@@ -188,20 +189,20 @@ couchbase-n8n-workflows/
 ### Tab: jetbrains
 
 | Year-Month | Total Downloads | Downloads This Month | Date Collected |
-|------------|-----------------|----------------------|----------------|
-| 2025-01 | 15234 | 342 | 2025-02-01 |
+| ---------- | --------------- | -------------------- | -------------- |
+| 2025-01    | 15234           | 342                  | 2025-02-01     |
 
 ### Tab: python-couchbase
 
-| Date | Package Name | Downloads | Unique Downloads |
-|------|--------------|-----------|------------------|
-| 2025-01 | couchbase | 45123 | 38456 |
+| Date    | Package Name | Downloads | Unique Downloads |
+| ------- | ------------ | --------- | ---------------- |
+| 2025-01 | couchbase    | 45123     | 38456            |
 
 ### Tab: python-langchain
 
-| Date | Package Name | Downloads | Unique Downloads |
-|------|--------------|-----------|------------------|
-| 2025-01 | langchain-couchbase | 8234 | 6890 |
+| Date    | Package Name        | Downloads | Unique Downloads |
+| ------- | ------------------- | --------- | ---------------- |
+| 2025-01 | langchain-couchbase | 8234      | 6890             |
 
 ## Adding New Packages
 
@@ -254,11 +255,12 @@ export N8N_API_KEY="your-key"
 
 ## Documentation Links
 
-- **Detailed Setup**: [`docs/getting-started.md`](docs/getting-started.md)
-- **Task 1 (Deploy n8n)**: [`workflows/1-deploy-n8n-cluster/README.md`](workflows/1-deploy-n8n-cluster/README.md)
-- **Task 2 (JetBrains)**: [`workflows/2-jetbrains-stats/README.md`](workflows/2-jetbrains-stats/README.md)
-- **Task 3 (PyPI)**: [`workflows/3-pypistats-subworkflow/README.md`](workflows/3-pypistats-subworkflow/README.md)
-- **Task 4 (Aggregator)**: [`workflows/4-package-stats-aggregator/README.md`](workflows/4-package-stats-aggregator/README.md)
+- **Main README**: [`../README.md`](../README.md)
+- **Detailed Setup**: [`getting-started.md`](getting-started.md)
+- **Task 1 (Deploy n8n)**: [`../workflows/1-deploy-n8n-cluster/README.md`](../workflows/1-deploy-n8n-cluster/README.md)
+- **Task 2 (JetBrains)**: [`../workflows/2-jetbrains-stats/README.md`](../workflows/2-jetbrains-stats/README.md)
+- **Task 3 (PyPI)**: [`../workflows/3-pypistats-subworkflow/README.md`](../workflows/3-pypistats-subworkflow/README.md)
+- **Task 4 (Aggregator)**: [`../workflows/4-package-stats-aggregator/README.md`](../workflows/4-package-stats-aggregator/README.md)
 
 ## External Resources
 
